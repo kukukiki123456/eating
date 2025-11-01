@@ -180,8 +180,18 @@
         </div>
       </div>
 
-      <!-- 右侧：消费记录和趋势图表 -->
+      <!-- 右侧：菜品选择、记录和统计 -->
       <div class="lg:col-span-2 space-y-6">
+        <!-- 食堂菜品快速选择 -->
+        <div class="card">
+          <h2 class="text-lg font-bold mb-4 flex items-center">
+            <i class="fa fa-utensils text-primary mr-2"></i>食堂菜品
+          </h2>
+          <div id="dishesContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            <!-- 菜品将通过JS动态生成 -->
+          </div>
+        </div>
+
         <!-- 消费记录 -->
         <div class="card">
           <div class="flex justify-between items-center mb-4">
@@ -210,13 +220,18 @@
           </div>
         </div>
 
-        <!-- 统计图表（仅保留趋势图） -->
+        <!-- 统计图表 -->
         <div class="card">
           <h2 class="text-lg font-bold mb-4 flex items-center">
-            <i class="fa fa-chart-line text-primary mr-2"></i>消费统计
+            <i class="fa fa-chart-pie text-primary mr-2"></i>消费统计
           </h2>
-          <div class="h-64">
-            <canvas id="trendChart"></canvas>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="h-64">
+              <canvas id="categoryChart"></canvas>
+            </div>
+            <div class="h-64">
+              <canvas id="trendChart"></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -230,7 +245,27 @@
   </footer>
 
   <script>
-    // 经济实惠的推荐菜品（仅用于预算建议，不显示在页面）
+    // 预设菜品数据
+    const dishes = [
+      { name: "鸡蛋灌饼", type: "breakfast", price: 6 },
+      { name: "豆浆", type: "breakfast", price: 2 },
+      { name: "肉包(2个)", type: "breakfast", price: 4 },
+      { name: "粥", type: "breakfast", price: 3 },
+      { name: "牛肉面", type: "lunch", price: 12 },
+      { name: "盖浇饭", type: "lunch", price: 10 },
+      { name: "麻辣烫", type: "lunch", price: 15 },
+      { name: "汉堡套餐", type: "lunch", price: 18 },
+      { name: "炒饭", type: "dinner", price: 8 },
+      { name: "面条", type: "dinner", price: 7 },
+      { name: "套餐饭", type: "dinner", price: 10 },
+      { name: "水饺", type: "dinner", price: 12 },
+      { name: "奶茶", type: "snack", price: 10 },
+      { name: "水果", type: "snack", price: 5 },
+      { name: "薯片", type: "snack", price: 4 },
+      { name: "面包", type: "snack", price: 6 }
+    ];
+
+    // 经济实惠的推荐菜品
     const cheapDishes = [
       { name: "食堂早餐粥+鸡蛋", price: 5, type: "breakfast" },
       { name: "一食堂素菜包+豆浆", price: 4, type: "breakfast" },
@@ -248,7 +283,8 @@
       },
       records: [],
       charts: {
-        trend: null // 仅保留趋势图表
+        category: null,
+        trend: null
       }
     };
 
@@ -283,6 +319,7 @@
       budgetTip: document.getElementById('budgetTip'),
       
       // 其他
+      dishesContainer: document.getElementById('dishesContainer'),
       exportBtn: document.getElementById('exportBtn'),
       importFile: document.getElementById('importFile')
     };
@@ -290,6 +327,7 @@
     // 初始化应用
     function initApp() {
       loadData();
+      renderDishes();
       renderRecords();
       updateBudgetOverview();
       initCharts();
@@ -323,6 +361,29 @@
     function saveData() {
       localStorage.setItem('foodBudget', JSON.stringify(state.budget));
       localStorage.setItem('foodRecords', JSON.stringify(state.records));
+    }
+
+    // 渲染菜品列表
+    function renderDishes() {
+      el.dishesContainer.innerHTML = '';
+      
+      dishes.forEach(dish => {
+        const dishEl = document.createElement('div');
+        dishEl.className = 'border border-gray-100 rounded-lg p-3 hover:border-primary hover:bg-primary/5 cursor-pointer transition-all';
+        dishEl.innerHTML = `
+          <p class="font-medium text-sm">${dish.name}</p>
+          <p class="text-primary font-bold mt-1">¥${dish.price}</p>
+          <p class="text-xs text-neutral mt-1 capitalize">${getTypeName(dish.type)}</p>
+        `;
+        
+        dishEl.addEventListener('click', () => {
+          el.expensePrice.value = dish.price;
+          el.expenseType.value = dish.type;
+          el.expenseName.value = dish.name;
+        });
+        
+        el.dishesContainer.appendChild(dishEl);
+      });
     }
 
     // 获取类别中文名称
@@ -536,8 +597,22 @@
       }
     }
 
-    // 初始化图表（仅保留趋势图）
+    // 初始化图表
     function initCharts() {
+      // 类别占比图表
+      const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+      state.charts.category = new Chart(categoryCtx, {
+        type: 'pie',
+        data: getCategoryData(),
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right' }
+          }
+        }
+      });
+      
       // 趋势图表
       const trendCtx = document.getElementById('trendChart').getContext('2d');
       state.charts.trend = new Chart(trendCtx, {
@@ -553,10 +628,40 @@
       });
     }
 
-    // 更新图表数据（仅更新趋势图）
+    // 更新图表数据
     function updateCharts() {
+      state.charts.category.data = getCategoryData();
+      state.charts.category.update();
+      
       state.charts.trend.data = getTrendData();
       state.charts.trend.update();
+    }
+
+    // 获取类别图表数据
+    function getCategoryData() {
+      const categories = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+      const today = new Date().toISOString().split('T')[0];
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - (new Date().getDay() || 7) + 1);
+      const weekStartStr = weekStart.toISOString().split('T')[0];
+      
+      state.records.forEach(record => {
+        const inCycle = state.budget.cycle === 'daily' 
+          ? record.date === today
+          : record.date >= weekStartStr && record.date <= today;
+          
+        if (inCycle) {
+          categories[record.type] += record.price;
+        }
+      });
+      
+      return {
+        labels: ['早餐', '午餐', '晚餐', '零食'],
+        datasets: [{
+          data: [categories.breakfast, categories.lunch, categories.dinner, categories.snack],
+          backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#64748B']
+        }]
+      };
     }
 
     // 获取趋势图表数据
